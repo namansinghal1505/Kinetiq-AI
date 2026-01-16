@@ -1,3 +1,4 @@
+/// <reference types="jest" />
 // Mock expo-speech before importing the module that uses it to avoid ESM transform issues
 jest.mock('expo-speech', () => ({
   speak: jest.fn(),
