@@ -38,6 +38,7 @@ export const LiveWorkoutScreen: React.FC<{ navigation: any; route: any }> = ({
   const [scores, setScores] = useState<number[]>([]);
   const [isDetectorReady, setIsDetectorReady] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
+  const [cameraLayout, setCameraLayout] = useState({ width: 0, height: 0 });
 
   // Throttling for backend calls
   const isProcessingRef = useRef(false);
@@ -249,19 +250,27 @@ export const LiveWorkoutScreen: React.FC<{ navigation: any; route: any }> = ({
         <View style={{ width: 40 }} />
       </View>
 
+
+
       <View style={styles.cameraContainer}>
         <CameraView
           ref={cameraRef}
           style={styles.camera}
           facing="front"
+          onLayout={(event) => {
+            const { width, height } = event.nativeEvent.layout;
+            setCameraLayout({ width, height });
+          }}
         >
           {/* Skeleton Overlay */}
-          <SkeletonOverlay
-            pose={currentPose}
-            analysis={postureAnalysis}
-            width={SCREEN_WIDTH} // Camera view fills width roughly
-            height={SCREEN_HEIGHT * 0.6}
-          />
+          {cameraLayout.width > 0 && (
+            <SkeletonOverlay
+              pose={currentPose}
+              analysis={postureAnalysis}
+              width={cameraLayout.width}
+              height={cameraLayout.height}
+            />
+          )}
         </CameraView>
 
         {/* Score Indicator */}
