@@ -81,15 +81,21 @@ export const SkeletonOverlay: React.FC<SkeletonOverlayProps> = ({
 
                     if (!p1 || !p2 || (p1.score || 0) < 0.3 || (p2.score || 0) < 0.3) return null;
 
+                    // Mirror X for front camera: 1 - x
+                    const x1 = (1 - p1.x) * width;
+                    const y1 = p1.y * height;
+                    const x2 = (1 - p2.x) * width;
+                    const y2 = p2.y * height;
+
                     return (
                         <Line
                             key={`conn-${index}`}
-                            x1={p1.x * width}
-                            y1={p1.y * height}
-                            x2={p2.x * width}
-                            y2={p2.y * height}
+                            x1={x1}
+                            y1={y1}
+                            x2={x2}
+                            y2={y2}
                             stroke={color}
-                            strokeWidth="2"
+                            strokeWidth="3"
                             opacity="0.8"
                         />
                     );
@@ -101,11 +107,15 @@ export const SkeletonOverlay: React.FC<SkeletonOverlayProps> = ({
                     const isFace = ['nose', 'eye', 'ear', 'mouth'].some(part => kp.name?.includes(part));
                     const radius = isFace ? 3 : 5;
 
+                    // Mirror X for front camera
+                    const cx = (1 - kp.x) * width;
+                    const cy = kp.y * height;
+
                     return (
                         <Circle
                             key={`kp-${index}`}
-                            cx={kp.x * width}
-                            cy={kp.y * height}
+                            cx={cx}
+                            cy={cy}
                             r={radius}
                             fill={color}
                             stroke="white"

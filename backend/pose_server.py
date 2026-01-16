@@ -13,7 +13,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps
 import cv2
 import mediapipe as mp
 from mediapipe.tasks import python
@@ -21,7 +21,31 @@ from mediapipe.tasks.python import vision
 
 app = FastAPI(title="KinetiqAI Pose Server", version="1.0.0")
 
-# Enable CORS for web and mobile access
+def decode_base64_image(base64_string: str) -> np.ndarray:
+    """Decode base64 image to numpy array with auto-rotation."""
+    # Remove data URL prefix if present
+    if ',' in base64_string:
+        base64_string = base64_string.split(',')[1]
+    
+    # Decode base64
+    image_bytes = base64.b64decode(base64_string)
+    image = Image.open(io.BytesIO(image_bytes))
+    
+    # Handle EXIF rotation if present
+    image = ImageOps.exif_transpose(image)
+    
+    # Auto-rotate if landscape (assuming portrait usage for workout)
+    if image.width > image.height:
+        # Rotate 270 degrees (90 degrees Clockwise) to make it upright
+        # This fixes the "horizontal skeleton" issue on mobile
+        image = image.transpose(Image.ROTATE_270)
+    
+    # Convert to RGB if necessary
+    if image.mode != 'RGB':
+        image = image.convert('RGB')
+    
+    # Convert to numpy array
+    return np.array(image)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # In production, specify your domains
@@ -146,22 +170,7 @@ class DetectionResponse(BaseModel):
     processingTime: float
 
 
-def decode_base64_image(base64_string: str) -> np.ndarray:
-    """Decode base64 image to numpy array."""
-    # Remove data URL prefix if present
-    if ',' in base64_string:
-        base64_string = base64_string.split(',')[1]
-    
-    # Decode base64
-    image_bytes = base64.b64decode(base64_string)
-    image = Image.open(io.BytesIO(image_bytes))
-    
-    # Convert to RGB if necessary
-    if image.mode != 'RGB':
-        image = image.convert('RGB')
-    
-    # Convert to numpy array
-    return np.array(image)
+
 
 
 def detect_pose(image: np.ndarray) -> Optional[Pose]:
@@ -367,20 +376,20 @@ def analyze_squat(keypoints: List[Keypoint], world_landmarks: Optional[List[Worl
             
             if knee_angle > 165:
                 feedback.append("Begin lowering into squat position")
-            elif knee_angle > 130:
+            elif knee_angle > 140:
                 mistakes.append("🟡 Squat deeper - thighs not parallel yet")
-                score -= 20
-            elif knee_angle > 100:
-                mistakes.append("🟡 Go slightly deeper for full range")
                 score -= 10
-            elif knee_angle >= 80 and knee_angle <= 100:
+            elif knee_angle > 120:
+                mistakes.append("🟡 Go slightly deeper for full range")
+                score -= 5
+            elif knee_angle >= 70 and knee_angle <= 120:  # Widened "Perfect" range (was 80-100)
                 feedback.append("✅ Perfect squat depth!")
-            elif knee_angle >= 70 and knee_angle < 80:
+            elif knee_angle >= 60 and knee_angle < 70:
                 mistakes.append("🟡 Slightly too deep - risk for knees")
-                score -= 8
+                score -= 5
             else:
                 mistakes.append("🔴 Too deep - maintain control")
-                score -= 15
+                score -= 10
             
             # Check knee tracking (3D distance from ankle)
             left_knee_forward = left_knee_3d.z - left_ankle_3d.z  # Positive = knee in front
@@ -411,17 +420,17 @@ def analyze_squat(keypoints: List[Keypoint], world_landmarks: Optional[List[Worl
             
             if knee_angle > 165:
                 feedback.append("Begin lowering into squat position")
-            elif knee_angle > 130:
+            elif knee_angle > 140:
                 mistakes.append("🟡 Squat deeper - thighs not parallel yet")
-                score -= 20
-            elif knee_angle > 100:
-                mistakes.append("🟡 Go slightly deeper for full range")
                 score -= 10
-            elif knee_angle >= 80 and knee_angle <= 100:
+            elif knee_angle > 120:
+                mistakes.append("🟡 Go slightly deeper for full range")
+                score -= 5
+            elif knee_angle >= 70 and knee_angle <= 120:
                 feedback.append("✅ Perfect squat depth!")
             else:
                 mistakes.append("🟡 Watch depth control")
-                score -= 10
+                score -= 5
             
             # 2D knee tracking check
             if left_knee.x < left_ankle.x - 0.08:
@@ -497,12 +506,12 @@ def analyze_plank(keypoints: List[Keypoint]) -> PostureAnalysis:
         expected_hip_y = (left_shoulder.y + left_ankle.y) / 2
         hip_deviation = abs(left_hip.y - expected_hip_y)
         
-        if left_hip.y < expected_hip_y - 0.05:
+        if left_hip.y < expected_hip_y - 0.08:
             mistakes.append("🔴 Hips too high - lower them for straight line")
-            score -= 25
-        elif left_hip.y > expected_hip_y + 0.05:
+            score -= 15
+        elif left_hip.y > expected_hip_y + 0.08:
             mistakes.append("🔴 Hips sagging - engage core and lift hips")
-            score -= 25
+            score -= 15
         else:
             feedback.append("✅ Great body alignment!")
     
