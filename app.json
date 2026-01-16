@@ -26,8 +26,10 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "permissions": [
-        "CAMERA"
-      ]
+        "CAMERA",
+        "android.permission.CAMERA"
+      ],
+      "package": "com.kinetiqai.app"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -43,6 +45,11 @@
           "recordAudioAndroid": false
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "89933af6-35ef-4f03-89a7-21446c2e5fdc"
+      }
+    }
   }
 }
