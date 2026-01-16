@@ -154,7 +154,7 @@ export const LiveWorkoutScreen: React.FC<{ navigation: any; route: any }> = ({
         setCurrentPose(pose); // Backend returns normalized (0-1) coordinates
         setPostureAnalysis(result.analysis);
 
-        if (isActive) {
+        if (isActive && result.analysis.color !== 'white') {
           setScores(prev => [...prev, result.analysis.score]);
         }
       } else if (result && !result.success) {
@@ -293,8 +293,17 @@ export const LiveWorkoutScreen: React.FC<{ navigation: any; route: any }> = ({
           </View>
         )}
 
-        {/* Feedback Box */}
-        {postureAnalysis && isActive && (
+        {/* Visibility Warning Overlay */}
+        {postureAnalysis && postureAnalysis.color === 'white' && (
+          <View style={styles.visibilityWarningOverlay}>
+            <Ionicons name="scan-outline" size={64} color={colors.white} />
+            <Text style={styles.visibilityWarningText}>Step Back</Text>
+            <Text style={styles.visibilityWarningSubtext}>Make sure your full body is visible</Text>
+          </View>
+        )}
+
+        {/* Feedback Box - Only show if visible */}
+        {postureAnalysis && isActive && postureAnalysis.color !== 'white' && (
           <View style={styles.feedbackBox}>
             {postureAnalysis.isCorrect ? (
               <View style={styles.feedbackRow}>
@@ -518,5 +527,29 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     color: colors.white,
     fontWeight: '600',
+  },
+  visibilityWarningOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  visibilityWarningText: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: colors.white,
+    marginTop: spacing.md,
+    textAlign: 'center',
+  },
+  visibilityWarningSubtext: {
+    fontSize: fontSize.md,
+    color: colors.gray200,
+    marginTop: spacing.sm,
+    textAlign: 'center',
   },
 });

@@ -19,7 +19,7 @@ export interface PostureAnalysis {
   isCorrect: boolean;
   feedback: string[];
   mistakes: string[];
-  color: 'green' | 'yellow' | 'red';
+  color: 'green' | 'yellow' | 'red' | 'white';
   personalizedInsights?: string[];
   poseClassification?: string;
 }

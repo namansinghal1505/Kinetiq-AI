@@ -699,8 +699,47 @@ def analyze_general(keypoints: List[Keypoint]) -> PostureAnalysis:
     )
 
 
+def check_body_visibility(keypoints: List[Keypoint], exercise: str) -> bool:
+    """Check if critical body parts are visible for the given exercise."""
+    needed_keypoints = []
+    exercise_lower = exercise.lower()
+    
+    # Define critical keypoints based on exercise
+    if 'squat' in exercise_lower or 'lunge' in exercise_lower:
+        # Lower body is critical
+        needed_keypoints = ['left_hip', 'right_hip', 'left_knee', 'right_knee', 'left_ankle', 'right_ankle']
+    elif 'plank' in exercise_lower or 'push' in exercise_lower:
+        # Full body length critical
+        needed_keypoints = ['left_shoulder', 'right_shoulder', 'left_hip', 'right_hip', 'left_ankle', 'right_ankle']
+    else:
+        # General - at least torso
+        needed_keypoints = ['left_shoulder', 'right_shoulder', 'left_hip', 'right_hip']
+        
+    # Check visibility
+    visible_count = 0
+    for name in needed_keypoints:
+        kp = get_keypoint(keypoints, name)
+        if kp and kp.score > 0.5:  # Threshold for "visible"
+            visible_count += 1
+            
+    # Require at least 80% of critical keypoints to be visible
+    return visible_count >= len(needed_keypoints) * 0.8
+
+
 def analyze_pose(keypoints: List[Keypoint], exercise: str, world_landmarks: Optional[List[WorldKeypoint]] = None) -> PostureAnalysis:
     """Analyze pose based on exercise type."""
+    
+    # First, check visibility
+    if not check_body_visibility(keypoints, exercise):
+        return PostureAnalysis(
+            score=0,
+            isCorrect=False,
+            feedback=["Body not fully visible"],
+            mistakes=["Please step back to show your full body"],
+            color="white", # Special color for visibility error
+            poseClassification=exercise 
+        )
+
     exercise_lower = exercise.lower()
     
     if 'squat' in exercise_lower:
