@@ -539,8 +539,8 @@ def analyze_plank(keypoints: List[Keypoint]) -> PostureAnalysis:
 
 
 def analyze_lunge(keypoints: List[Keypoint]) -> PostureAnalysis:
-        scoring = get_scoring_coords(keypoints, visibility_threshold=0.6)
     """Analyze lunge form with bilateral assessment."""
+    scoring = get_scoring_coords(keypoints, visibility_threshold=0.6)
     score = 100
     mistakes = []
     feedback = []
@@ -603,8 +603,8 @@ def analyze_lunge(keypoints: List[Keypoint]) -> PostureAnalysis:
 
 
 def analyze_pushup(keypoints: List[Keypoint]) -> PostureAnalysis:
-        scoring = get_scoring_coords(keypoints, visibility_threshold=0.6)
     """Analyze push-up form with bilateral assessment."""
+    scoring = get_scoring_coords(keypoints, visibility_threshold=0.6)
     score = 100
     mistakes = []
     feedback = []
@@ -663,8 +663,8 @@ def analyze_pushup(keypoints: List[Keypoint]) -> PostureAnalysis:
 
 
 def analyze_general(keypoints: List[Keypoint]) -> PostureAnalysis:
-        scoring = get_scoring_coords(keypoints, visibility_threshold=0.6)
     """General posture analysis."""
+    scoring = get_scoring_coords(keypoints, visibility_threshold=0.6)
     score = 85
     feedback = ["Pose detected successfully"]
     mistakes = []
@@ -782,6 +782,6 @@ async def batch_detect(images: List[str], exercise: str = "general"):
 if __name__ == "__main__":
     import uvicorn
     print("Starting KinetiqAI Pose Server...")
-    print("Server will be available at http://localhost:8000")
-    print("API docs at http://localhost:8000/docs")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    print("Server will be available at http://localhost:8001")
+    print("API docs at http://localhost:8001/docs")
+    uvicorn.run(app, host="0.0.0.0", port=8001)

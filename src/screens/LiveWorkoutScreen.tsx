@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,23 +7,17 @@ import {
   Dimensions,
   ActivityIndicator,
   Alert,
-  Platform,
-  Switch,
+  Image as RNImage
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
+import { poseDetectionService, Pose, PostureAnalysis, DetectionResponse } from '../services/PoseDetectionService';
 import { storageService } from '../services/StorageService';
-import { poseTrackerService } from '../services/PoseTrackerService';
 import { colors, spacing, fontSize } from '../theme';
-import { useNavigation, useRoute } from '@react-navigation/native';
-import { PoseTrackerWebView } from '../components/PoseTrackerWebView';
-import StreakCelebration from '../components/StreakCelebration';
+import { SkeletonOverlay } from '../components/SkeletonOverlay';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-
-// PoseTracker API Key
-const POSETRACKER_API_KEY = '218b867b-ee16-42b7-ac31-4fe0cb5fde84';
 
 interface RouteParams {
   exercise: string;
@@ -36,43 +30,63 @@ export const LiveWorkoutScreen: React.FC<{ navigation: any; route: any }> = ({
 }) => {
   const { exercise, duration } = route.params as RouteParams;
 
+  const [permission, requestPermission] = useCameraPermissions();
   const [isActive, setIsActive] = useState(false);
   const [timeElapsed, setTimeElapsed] = useState(0);
-  const [repCount, setRepCount] = useState(0);
-  const [detectionStatus, setDetectionStatus] = useState('Initializing PoseTracker...');
-  const [showStreakCelebration, setShowStreakCelebration] = useState(false);
-  const [celebrationDays, setCelebrationDays] = useState(0);
-  const [voiceEnabled, setVoiceEnabled] = useState(true);
-  const intervalRef = React.useRef<NodeJS.Timeout | null>(null);
+  const [currentPose, setCurrentPose] = useState<Pose | null>(null);
+  const [postureAnalysis, setPostureAnalysis] = useState<PostureAnalysis | null>(null);
+  const [scores, setScores] = useState<number[]>([]);
+  const [isDetectorReady, setIsDetectorReady] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(false);
 
-  // Initialize PoseTracker service
+  // Throttling for backend calls
+  const isProcessingRef = useRef(false);
+  const lastProcessTimeRef = useRef(0);
+  const MIN_FRAME_TIME = 200; // 5 FPS max to prevent backend overload
+
+  const cameraRef = useRef<CameraView>(null);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const poseIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
   useEffect(() => {
-    try {
-      poseTrackerService.initialize({
-        apiKey: POSETRACKER_API_KEY,
-        difficulty: 'medium',
-        enableSkeleton: true,
-      });
-      console.log('[LiveWorkout] PoseTracker service initialized');
-    } catch (error) {
-      console.error('[LiveWorkout] PoseTracker initialization error:', error);
-      Alert.alert('Error', 'Failed to initialize PoseTracker');
+    if (!permission) {
+      requestPermission();
     }
-
     return () => {
       cleanup();
     };
   }, []);
 
-  // Timer effect
   useEffect(() => {
     if (isActive) {
       startTimer();
+      startPoseDetection();
     } else {
       stopTimer();
+      stopPoseDetection();
     }
-    return () => stopTimer();
   }, [isActive]);
+
+  const initializeDetector = async (): Promise<boolean> => {
+    if (isDetectorReady) return true;
+    setIsInitializing(true);
+    try {
+      await poseDetectionService.initialize();
+      const ready = poseDetectionService.isReady();
+      setIsDetectorReady(ready);
+      setIsInitializing(false);
+      return ready;
+    } catch (error) {
+      console.error('Initialization failed:', error);
+      setIsInitializing(false);
+      Alert.alert(
+        'Connection Error',
+        'Could not connect to pose detection server. Check if backend is running.',
+        [{ text: 'OK' }]
+      );
+      return false;
+    }
+  };
 
   const startTimer = () => {
     intervalRef.current = setInterval(() => {
@@ -87,100 +101,115 @@ export const LiveWorkoutScreen: React.FC<{ navigation: any; route: any }> = ({
     }
   };
 
-  // Handle rep count changes from PoseTracker
-  const handleRepsChange = (reps: number) => {
-    setRepCount(reps);
-    if (reps > 0) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  const startPoseDetection = () => {
+    if (!isDetectorReady) {
+      Alert.alert('Error', 'Server not connected.');
+      setIsActive(false);
+      return;
+    }
+
+    // We use a faster interval but throttle inside the loop using ref timestamps
+    poseIntervalRef.current = setInterval(async () => {
+      const now = Date.now();
+      if (isProcessingRef.current || (now - lastProcessTimeRef.current < MIN_FRAME_TIME)) {
+        return;
+      }
+      await detectPose();
+    }, 100);
+  };
+
+  const stopPoseDetection = () => {
+    if (poseIntervalRef.current) {
+      clearInterval(poseIntervalRef.current);
+      poseIntervalRef.current = null;
     }
   };
 
-  // Handle status updates from PoseTracker
-  const handleStatusChange = (status: string) => {
-    setDetectionStatus(status);
-  };
+  const detectPose = async () => {
+    if (!cameraRef.current || !isActive) return;
 
-  // Handle data received from PoseTracker
-  const handlePoseTrackerData = (data: any) => {
-    if (data.type === 'counter' && data.current_count !== undefined) {
-      handleRepsChange(data.current_count);
-    }
-  };
+    try {
+      isProcessingRef.current = true;
+      lastProcessTimeRef.current = Date.now();
 
-  // Safe navigation back handler
-  const handleSafeGoBack = () => {
-    if (isActive) {
-      Alert.alert(
-        'End Workout?',
-        'Are you sure you want to end the workout?',
-        [
-          { text: 'Cancel', onPress: () => {} },
-          { text: 'End', onPress: () => finishWorkout() },
-        ]
-      );
-    } else if (navigation.canGoBack()) {
-      navigation.goBack();
-    } else {
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'MainTabs' }],
+      // Take a snapshot
+      const photo = await cameraRef.current.takePictureAsync({
+        quality: 0.4, // Lower quality for speed
+        base64: true,
+        skipProcessing: true,
+        imageType: 'jpg',
       });
+
+      if (!photo || !photo.base64) {
+        isProcessingRef.current = false;
+        return;
+      }
+
+      // Send to backend
+      const result: DetectionResponse | null = await poseDetectionService.detectAndAnalyze(photo.base64, exercise);
+
+      if (result && result.success && result.poses.length > 0) {
+        const pose = result.poses[0];
+        setCurrentPose(pose); // Backend returns normalized (0-1) coordinates
+        setPostureAnalysis(result.analysis);
+
+        if (isActive) {
+          setScores(prev => [...prev, result.analysis.score]);
+        }
+      } else if (result && !result.success) {
+        // Keep showing last valid pose or clear? 
+        // If no pose detected, maybe clear
+        // setCurrentPose(null);
+        if (result.analysis) {
+          setPostureAnalysis(result.analysis); // Show "No pose detected" feedback
+        }
+      }
+
+    } catch (error) {
+      console.error('Pose detection loop error:', error);
+    } finally {
+      isProcessingRef.current = false;
     }
   };
 
-  const handleStartStop = () => {
+  const handleStartStop = async () => {
     if (isActive) {
       finishWorkout();
     } else {
+      if (!isDetectorReady) {
+        const initialized = await initializeDetector();
+        if (!initialized) return;
+      }
       setIsActive(true);
       setTimeElapsed(0);
-      setRepCount(0);
+      setScores([]);
     }
   };
 
   const finishWorkout = async () => {
     setIsActive(false);
-    stopTimer();
+    const averageScore = scores.length > 0
+      ? scores.reduce((a, b) => a + b, 0) / scores.length
+      : 0;
 
     const sessionData = {
       id: Date.now().toString(),
       exerciseName: exercise,
       date: new Date().toISOString(),
       duration: timeElapsed,
-      averageScore: 0, // PoseTracker will handle scoring
-      reps: repCount,
-      mistakes: [],
-      feedback: ['Workout completed using PoseTracker'],
+      averageScore: Math.round(averageScore),
+      mistakes: postureAnalysis?.mistakes || [],
+      feedback: [...(postureAnalysis?.feedback || [])],
       timestamp: Date.now(),
     };
 
     await storageService.saveSession(sessionData);
-
-    // Update streak - show celebration on increment (non-blocking)
-    try {
-      const StreakMgr = (await import('../services/StreakManager')).default;
-      const { didIncrement, streak } = await StreakMgr.onWorkoutCompleted();
-      if (didIncrement) {
-        // show celebration overlay in this screen (non-blocking)
-        setShowStreakCelebration(true);
-        setCelebrationDays(streak);
-        // Auto-dismiss after ~2.5s
-        setTimeout(() => {
-          setShowStreakCelebration(false);
-          navigation.navigate('SessionSummary', { session: sessionData });
-        }, 2500);
-        return;
-      }
-    } catch (e) {
-      // if streak manager fails, continue to summary
-    }
-
     navigation.navigate('SessionSummary', { session: sessionData });
   };
 
   const cleanup = () => {
     stopTimer();
-    poseTrackerService.reset();
+    stopPoseDetection();
   };
 
   const formatTime = (seconds: number): string => {
@@ -189,42 +218,99 @@ export const LiveWorkoutScreen: React.FC<{ navigation: any; route: any }> = ({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  if (!permission) {
+    return (
+      <View style={styles.centerContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={styles.loadingText}>Requesting camera permission...</Text>
+      </View>
+    );
+  }
+
+  if (!permission.granted) {
+    return (
+      <View style={styles.centerContainer}>
+        <Ionicons name="camera-outline" size={64} color={colors.gray400} />
+        <Text style={styles.errorText}>Camera permission required</Text>
+        <TouchableOpacity style={styles.retryButton} onPress={requestPermission}>
+          <Text style={styles.retryButtonText}>Grant Permission</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={handleSafeGoBack} style={styles.backButton}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <Ionicons name="close" size={28} color={colors.white} />
         </TouchableOpacity>
         <Text style={styles.exerciseTitle}>{exercise}</Text>
-        <View style={styles.voiceToggle}>
-          <Ionicons name="volume-high" size={20} color={colors.white} />
-          <Switch
-            value={voiceEnabled}
-            onValueChange={setVoiceEnabled}
-            trackColor={{ false: colors.gray400, true: colors.primary }}
-            thumbColor={voiceEnabled ? colors.white : colors.gray200}
-          />
-        </View>
+        <View style={{ width: 40 }} />
       </View>
 
-      <View style={styles.webViewContainer}>
-        {isActive ? (
-          <PoseTrackerWebView
-            exercise={exercise}
-            apiKey={POSETRACKER_API_KEY}
-            onRepsChange={handleRepsChange}
-            onStatusChange={handleStatusChange}
-            onDataReceived={handlePoseTrackerData}
-            difficulty="medium"
-            voiceEnabled={voiceEnabled}
+      <View style={styles.cameraContainer}>
+        <CameraView
+          ref={cameraRef}
+          style={styles.camera}
+          facing="front"
+        >
+          {/* Skeleton Overlay */}
+          <SkeletonOverlay
+            pose={currentPose}
+            analysis={postureAnalysis}
+            width={SCREEN_WIDTH} // Camera view fills width roughly
+            height={SCREEN_HEIGHT * 0.6}
           />
-        ) : (
-          <View style={styles.placeholderContainer}>
-            <Ionicons name="camera" size={64} color={colors.primary} />
-            <Text style={styles.placeholderText}>Press Play to Start Workout</Text>
-            <Text style={styles.placeholderSubtext}>
-              Using PoseTracker for real-time pose detection
-            </Text>
+        </CameraView>
+
+        {/* Score Indicator */}
+        {postureAnalysis && (
+          <View
+            style={[
+              styles.scoreIndicator,
+              {
+                backgroundColor:
+                  postureAnalysis.color === 'green'
+                    ? '#56E8A050'
+                    : postureAnalysis.color === 'yellow'
+                      ? '#E8C95650'
+                      : '#E8569D50',
+              },
+            ]}
+          >
+            <Text style={styles.scoreText}>{Math.round(postureAnalysis.score)}</Text>
+            <Text style={styles.scoreLabel}>Score</Text>
+          </View>
+        )}
+
+        {/* Feedback Box */}
+        {postureAnalysis && isActive && (
+          <View style={styles.feedbackBox}>
+            {postureAnalysis.isCorrect ? (
+              <View style={styles.feedbackRow}>
+                <Ionicons name="checkmark-circle" size={24} color="#56E8A0" />
+                <Text style={styles.feedbackTextGood}>Perfect Form!</Text>
+              </View>
+            ) : (
+              <View>
+                {postureAnalysis.mistakes.slice(0, 2).map((mistake, index) => (
+                  <View key={index} style={styles.feedbackRow}>
+                    <Ionicons name="alert-circle" size={20} color="#E8C956" />
+                    <Text style={styles.feedbackTextWarning}>{mistake}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Feedback messages */}
+            {postureAnalysis.feedback.length > 0 && !postureAnalysis.isCorrect && (
+              <View style={{ marginTop: 4 }}>
+                <Text style={[styles.feedbackTextWarning, { fontStyle: 'italic', opacity: 0.8 }]}>
+                  {postureAnalysis.feedback[0]}
+                </Text>
+              </View>
+            )}
           </View>
         )}
       </View>
@@ -236,29 +322,33 @@ export const LiveWorkoutScreen: React.FC<{ navigation: any; route: any }> = ({
         </View>
 
         <TouchableOpacity
-          style={[styles.actionButton, isActive && styles.stopButton]}
+          style={[
+            styles.actionButton,
+            isActive && styles.stopButton,
+            isInitializing && styles.initializingButton
+          ]}
           onPress={handleStartStop}
+          disabled={isInitializing}
         >
-          <Ionicons
-            name={isActive ? 'stop' : 'play'}
-            size={32}
-            color={colors.white}
-          />
+          {isInitializing ? (
+            <ActivityIndicator size={32} color={colors.white} />
+          ) : (
+            <Ionicons
+              name={isActive ? 'stop' : 'play'}
+              size={32}
+              color={colors.white}
+            />
+          )}
         </TouchableOpacity>
 
         {isActive && (
           <View style={styles.statsContainer}>
-            <Text style={styles.statsText}>Reps: {repCount}</Text>
+            <Text style={styles.statsText}>
+              Avg: {scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b) / scores.length) : 0}
+            </Text>
           </View>
         )}
       </View>
-
-      <StreakCelebration
-        visible={showStreakCelebration}
-        days={celebrationDays}
-        onDismiss={() => setShowStreakCelebration(false)}
-        durationMs={2500}
-      />
     </SafeAreaView>
   );
 };
@@ -267,6 +357,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  centerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.background,
+    padding: spacing.xl,
   },
   header: {
     flexDirection: 'row',
@@ -287,83 +384,130 @@ const styles = StyleSheet.create({
     fontSize: fontSize.xl,
     fontWeight: '700',
     color: colors.textPrimary,
-    flex: 1,
-    textAlign: 'center',
   },
-  voiceToggle: {
+  cameraContainer: {
+    flex: 1,
+    position: 'relative',
+    backgroundColor: colors.cardBg,
+    margin: spacing.lg,
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  camera: {
+    flex: 1,
+  },
+  scoreIndicator: {
+    position: 'absolute',
+    top: spacing.lg,
+    right: spacing.lg,
+    padding: spacing.md,
+    borderRadius: 15,
+    alignItems: 'center',
+    minWidth: 80,
+  },
+  scoreText: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: colors.white,
+  },
+  scoreLabel: {
+    fontSize: fontSize.sm,
+    color: colors.white,
+    opacity: 0.9,
+  },
+  feedbackBox: {
+    position: 'absolute',
+    bottom: spacing.lg,
+    left: spacing.lg,
+    right: spacing.lg,
+    backgroundColor: 'rgba(0,0,0,0.8)',
+    padding: spacing.md,
+    borderRadius: 15,
+  },
+  feedbackRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
+    marginVertical: 4,
   },
-  webViewContainer: {
-    flex: 1,
-    marginHorizontal: spacing.sm,
-    marginVertical: spacing.xs,
-    borderRadius: 16,
-    overflow: 'hidden',
-    backgroundColor: colors.cardBg,
-  },
-  placeholderContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.background,
-    gap: spacing.md,
-  },
-  placeholderText: {
-    fontSize: fontSize.lg,
+  feedbackTextGood: {
+    fontSize: fontSize.md,
+    color: '#56E8A0',
     fontWeight: '600',
-    color: colors.textPrimary,
-    textAlign: 'center',
+    flex: 1,
   },
-  placeholderSubtext: {
+  feedbackTextWarning: {
     fontSize: fontSize.sm,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    paddingHorizontal: spacing.lg,
+    color: '#E8C956',
+    flex: 1,
   },
   controls: {
-    flexDirection: 'row',
+    padding: spacing.xl,
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.lg,
     gap: spacing.lg,
-    backgroundColor: colors.cardBg,
   },
   timerContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm,
+    gap: spacing.md,
   },
   timerText: {
-    fontSize: fontSize.lg,
-    fontWeight: '700',
+    fontSize: 48,
+    fontWeight: '800',
     color: colors.textPrimary,
   },
   actionButton: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
     elevation: 5,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
   },
   stopButton: {
     backgroundColor: '#E8569D',
   },
+  initializingButton: {
+    backgroundColor: '#7556E8',
+    opacity: 0.8,
+  },
   statsContainer: {
-    flex: 1,
-    alignItems: 'flex-end',
+    padding: spacing.md,
+    backgroundColor: colors.cardBg,
+    borderRadius: 15,
   },
   statsText: {
-    fontSize: fontSize.md,
-    fontWeight: '600',
+    fontSize: fontSize.lg,
     color: colors.textPrimary,
+    fontWeight: '600',
+  },
+  loadingText: {
+    marginTop: spacing.lg,
+    fontSize: fontSize.md,
+    color: colors.gray400,
+    fontWeight: '600',
+  },
+  errorText: {
+    marginTop: spacing.lg,
+    fontSize: fontSize.lg,
+    color: colors.gray400,
+    textAlign: 'center',
+  },
+  retryButton: {
+    marginTop: spacing.xl,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.xl,
+    backgroundColor: colors.primary,
+    borderRadius: 25,
+  },
+  retryButtonText: {
+    fontSize: fontSize.md,
+    color: colors.white,
+    fontWeight: '600',
   },
 });
