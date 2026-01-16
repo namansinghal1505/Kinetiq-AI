@@ -42,7 +42,7 @@ export const LiveWorkoutScreen: React.FC<{ navigation: any; route: any }> = ({
   // Throttling for backend calls
   const isProcessingRef = useRef(false);
   const lastProcessTimeRef = useRef(0);
-  const MIN_FRAME_TIME = 200; // 5 FPS max to prevent backend overload
+  const MIN_FRAME_TIME = 100; // 10 FPS for smoother feedback (was 200ms)
 
   const cameraRef = useRef<CameraView>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -108,14 +108,14 @@ export const LiveWorkoutScreen: React.FC<{ navigation: any; route: any }> = ({
       return;
     }
 
-    // We use a faster interval but throttle inside the loop using ref timestamps
+    // Faster interval check for smoother target FPS
     poseIntervalRef.current = setInterval(async () => {
       const now = Date.now();
       if (isProcessingRef.current || (now - lastProcessTimeRef.current < MIN_FRAME_TIME)) {
         return;
       }
       await detectPose();
-    }, 100);
+    }, 50);
   };
 
   const stopPoseDetection = () => {
@@ -134,7 +134,7 @@ export const LiveWorkoutScreen: React.FC<{ navigation: any; route: any }> = ({
 
       // Take a snapshot
       const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.4, // Lower quality for speed
+        quality: 0.3, // Reduced quality for faster transfer
         base64: true,
         skipProcessing: true,
         imageType: 'jpg',
