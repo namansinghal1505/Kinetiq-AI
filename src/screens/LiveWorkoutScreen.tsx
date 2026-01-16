@@ -14,16 +14,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { storageService } from '../services/StorageService';
-import { poseTrackerService } from '../services/PoseTrackerService';
+import { exerciseScoringService } from '../services/ExerciseScoringService';
 import { colors, spacing, fontSize } from '../theme';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { PoseTrackerWebView } from '../components/PoseTrackerWebView';
+import { PoseCamera } from '../components/PoseCamera';
 import StreakCelebration from '../components/StreakCelebration';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-
-// PoseTracker API Key
-const POSETRACKER_API_KEY = '218b867b-ee16-42b7-ac31-4fe0cb5fde84';
 
 interface RouteParams {
   exercise: string;
@@ -39,30 +36,13 @@ export const LiveWorkoutScreen: React.FC<{ navigation: any; route: any }> = ({
   const [isActive, setIsActive] = useState(false);
   const [timeElapsed, setTimeElapsed] = useState(0);
   const [repCount, setRepCount] = useState(0);
-  const [detectionStatus, setDetectionStatus] = useState('Initializing PoseTracker...');
+  const [detectionStatus, setDetectionStatus] = useState('Initializing pose detection...');
   const [showStreakCelebration, setShowStreakCelebration] = useState(false);
   const [celebrationDays, setCelebrationDays] = useState(0);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [currentScore, setCurrentScore] = useState(0);
+  const [formFeedback, setFormFeedback] = useState<string[]>([]);
   const intervalRef = React.useRef<NodeJS.Timeout | null>(null);
-
-  // Initialize PoseTracker service
-  useEffect(() => {
-    try {
-      poseTrackerService.initialize({
-        apiKey: POSETRACKER_API_KEY,
-        difficulty: 'medium',
-        enableSkeleton: true,
-      });
-      console.log('[LiveWorkout] PoseTracker service initialized');
-    } catch (error) {
-      console.error('[LiveWorkout] PoseTracker initialization error:', error);
-      Alert.alert('Error', 'Failed to initialize PoseTracker');
-    }
-
-    return () => {
-      cleanup();
-    };
-  }, []);
 
   // Timer effect
   useEffect(() => {
@@ -95,16 +75,19 @@ export const LiveWorkoutScreen: React.FC<{ navigation: any; route: any }> = ({
     }
   };
 
-  // Handle status updates from PoseTracker
-  const handleStatusChange = (status: string) => {
-    setDetectionStatus(status);
+  // Handle score updates
+  const handleScoreChange = (score: number) => {
+    setCurrentScore(score);
   };
 
-  // Handle data received from PoseTracker
-  const handlePoseTrackerData = (data: any) => {
-    if (data.type === 'counter' && data.current_count !== undefined) {
-      handleRepsChange(data.current_count);
-    }
+  // Handle feedback updates
+  const handleFeedbackChange = (feedback: string[]) => {
+    setFormFeedback(feedback);
+  };
+
+  // Handle status updates
+  const handleStatusChange = (status: string) => {
+    setDetectionStatus(status);
   };
 
   // Safe navigation back handler
@@ -142,15 +125,20 @@ export const LiveWorkoutScreen: React.FC<{ navigation: any; route: any }> = ({
     setIsActive(false);
     stopTimer();
 
+    // Get scoring session summary
+    const scoringSummary = exerciseScoringService.endSession();
+
     const sessionData = {
       id: Date.now().toString(),
       exerciseName: exercise,
       date: new Date().toISOString(),
       duration: timeElapsed,
-      averageScore: 0, // PoseTracker will handle scoring
-      reps: repCount,
-      mistakes: [],
-      feedback: ['Workout completed using PoseTracker'],
+      averageScore: scoringSummary.averageScore || currentScore,
+      reps: repCount || scoringSummary.reps,
+      mistakes: formFeedback,
+      feedback: scoringSummary.repScores.length > 0 
+        ? scoringSummary.repScores.map(r => `Rep ${r.repNumber}: ${r.score}%`)
+        : ['Workout completed using PoseTracker'],
       timestamp: Date.now(),
     };
 
@@ -180,7 +168,6 @@ export const LiveWorkoutScreen: React.FC<{ navigation: any; route: any }> = ({
 
   const cleanup = () => {
     stopTimer();
-    poseTrackerService.reset();
   };
 
   const formatTime = (seconds: number): string => {
@@ -208,25 +195,17 @@ export const LiveWorkoutScreen: React.FC<{ navigation: any; route: any }> = ({
       </View>
 
       <View style={styles.webViewContainer}>
-        {isActive ? (
-          <PoseTrackerWebView
-            exercise={exercise}
-            apiKey={POSETRACKER_API_KEY}
-            onRepsChange={handleRepsChange}
-            onStatusChange={handleStatusChange}
-            onDataReceived={handlePoseTrackerData}
-            difficulty="medium"
-            voiceEnabled={voiceEnabled}
-          />
-        ) : (
-          <View style={styles.placeholderContainer}>
-            <Ionicons name="camera" size={64} color={colors.primary} />
-            <Text style={styles.placeholderText}>Press Play to Start Workout</Text>
-            <Text style={styles.placeholderSubtext}>
-              Using PoseTracker for real-time pose detection
-            </Text>
-          </View>
-        )}
+        <PoseCamera
+          exercise={exercise}
+          isActive={isActive}
+          onRepsChange={handleRepsChange}
+          onStatusChange={handleStatusChange}
+          onScoreChange={handleScoreChange}
+          onFeedbackChange={handleFeedbackChange}
+          voiceEnabled={voiceEnabled}
+          showSkeleton={true}
+          showDebugInfo={false}
+        />
       </View>
 
       <View style={styles.controls}>
@@ -248,7 +227,22 @@ export const LiveWorkoutScreen: React.FC<{ navigation: any; route: any }> = ({
 
         {isActive && (
           <View style={styles.statsContainer}>
-            <Text style={styles.statsText}>Reps: {repCount}</Text>
+            <View style={styles.statItem}>
+              <Text style={styles.statLabel}>Reps</Text>
+              <Text style={styles.statValue}>{repCount}</Text>
+            </View>
+            {currentScore > 0 && (
+              <View style={styles.statItem}>
+                <Text style={styles.statLabel}>Form</Text>
+                <Text style={[
+                  styles.statValue,
+                  currentScore >= 80 ? styles.scoreGood : 
+                  currentScore >= 60 ? styles.scoreOkay : styles.scorePoor
+                ]}>
+                  {Math.round(currentScore)}%
+                </Text>
+              </View>
+            )}
           </View>
         )}
       </View>
@@ -359,7 +353,31 @@ const styles = StyleSheet.create({
   },
   statsContainer: {
     flex: 1,
-    alignItems: 'flex-end',
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: spacing.lg,
+  },
+  statItem: {
+    alignItems: 'center',
+  },
+  statLabel: {
+    fontSize: fontSize.xs,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  statValue: {
+    fontSize: fontSize.lg,
+    fontWeight: '700',
+    color: colors.textPrimary,
+  },
+  scoreGood: {
+    color: '#22c55e',
+  },
+  scoreOkay: {
+    color: '#eab308',
+  },
+  scorePoor: {
+    color: '#ef4444',
   },
   statsText: {
     fontSize: fontSize.md,

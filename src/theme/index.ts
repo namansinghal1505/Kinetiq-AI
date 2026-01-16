@@ -1,4 +1,4 @@
-import { StyleSheet } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 import { colors } from './colors';
 
 export { colors };
@@ -41,27 +41,42 @@ export const fontWeight = {
 };
 
 export const shadows = StyleSheet.create({
-  sm: {
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  md: {
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  lg: {
-    shadowColor: colors.black,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 5,
-  },
+  sm: Platform.select({
+    web: {
+      boxShadow: '0px 1px 2px rgba(0, 0, 0, 0.05)',
+    },
+    default: {
+      shadowColor: colors.black,
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.05,
+      shadowRadius: 2,
+      elevation: 1,
+    },
+  }) as any,
+  md: Platform.select({
+    web: {
+      boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.1)',
+    },
+    default: {
+      shadowColor: colors.black,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 3,
+    },
+  }) as any,
+  lg: Platform.select({
+    web: {
+      boxShadow: '0px 4px 8px rgba(0, 0, 0, 0.15)',
+    },
+    default: {
+      shadowColor: colors.black,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.15,
+      shadowRadius: 8,
+      elevation: 5,
+    },
+  }) as any,
 });
 
 export const theme = {

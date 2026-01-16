@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, Platform } from 'react-native';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -75,6 +75,8 @@ const MainTabs = () => {
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
         },
+        // Fix aria-hidden focus issue on web
+        ...(Platform.OS === 'web' ? { lazy: false } : {}),
       }}
     >
       <Tab.Screen
@@ -142,6 +144,8 @@ export const AppNavigator: React.FC = () => {
       <Stack.Navigator
         screenOptions={{
           headerShown: false,
+          // Fix aria-hidden focus issue on web by not detaching screens
+          ...(Platform.OS === 'web' ? { animationEnabled: false } : {}),
         }}
       >
         {!isAuthenticated ? (
