@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,8 +12,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, spacing, borderRadius, fontSize, fontWeight, shadows } from '../theme';
-import { Avatar } from '../components';
+import { useTheme, ThemeColors, spacing, borderRadius, fontSize, fontWeight, shadows } from '../theme';
 import { getOnDemandChatbot, ChatMessage as OnDemandMessage } from '../services/OnDemandChatbotService';
 
 interface Message {
@@ -26,9 +25,11 @@ interface Message {
 
 interface ChatBubbleProps {
   message: Message;
+  colors: ThemeColors;
+  styles: any;
 }
 
-const ChatBubble: React.FC<ChatBubbleProps> = ({ message }) => (
+const ChatBubble: React.FC<ChatBubbleProps> = ({ message, colors, styles }) => (
   <View
     style={[
       styles.messageBubble,
@@ -77,7 +78,7 @@ const ChatBubble: React.FC<ChatBubbleProps> = ({ message }) => (
   </View>
 );
 
-const SuggestedPrompt: React.FC<{ text: string; onPress: () => void }> = ({ text, onPress }) => (
+const SuggestedPrompt: React.FC<{ text: string; onPress: () => void; styles: any; colors: ThemeColors }> = ({ text, onPress, styles, colors }) => (
   <TouchableOpacity style={styles.suggestedPrompt} onPress={onPress} activeOpacity={0.7}>
     <Text style={styles.suggestedPromptText}>{text}</Text>
     <Ionicons name="arrow-forward" size={16} color={colors.primary} />
@@ -85,6 +86,8 @@ const SuggestedPrompt: React.FC<{ text: string; onPress: () => void }> = ({ text
 );
 
 export const ChatScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const scrollViewRef = useRef<ScrollView>(null);
   const [inputText, setInputText] = useState('');
   const [messages, setMessages] = useState<Message[]>([
@@ -135,7 +138,7 @@ export const ChatScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
       console.error('Chat Error:', errorMessage);
 
       let errorText = "I'm experiencing a technical issue. Please try again in a moment.";
-      
+
       // Check if it's an initialization error
       if (errorMessage.includes('not initialized')) {
         errorText = "The chat service is not properly configured. Please restart the app and ensure your API key is set.";
@@ -160,12 +163,26 @@ export const ChatScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    // Added 'top' to edges to fix status bar padding
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      {/* 
+        Adjusted behavior: 'padding' is generally better for iOS. 
+        'height' often works better on Android to prevent coverage.
+        Increased offset to clear headers.
+      */}
       <KeyboardAvoidingView
         style={styles.keyboardAvoid}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
       >
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Kinetiq Coach</Text>
+          <View style={{ width: 40 }} />
+        </View>
+
         {/* Chat Messages */}
         <ScrollView
           ref={scrollViewRef}
@@ -175,7 +192,7 @@ export const ChatScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
           showsVerticalScrollIndicator={false}
         >
           {messages.map((message) => (
-            <ChatBubble key={message.id} message={message} />
+            <ChatBubble key={message.id} message={message} colors={colors} styles={styles} />
           ))}
 
           {/* Suggested Prompts - show only when few messages */}
@@ -187,6 +204,8 @@ export const ChatScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
                   key={index}
                   text={prompt}
                   onPress={() => handleSuggestedPrompt(prompt)}
+                  styles={styles}
+                  colors={colors}
                 />
               ))}
             </View>
@@ -208,9 +227,6 @@ export const ChatScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
               multiline
               maxLength={500}
             />
-            <TouchableOpacity style={styles.micButton}>
-              <Ionicons name="mic-outline" size={24} color={colors.gray400} />
-            </TouchableOpacity>
           </View>
           <TouchableOpacity
             style={[
@@ -236,13 +252,30 @@ export const ChatScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
   },
   keyboardAvoid: {
     flex: 1,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  backButton: {
+    padding: spacing.sm,
+  },
+  headerTitle: {
+    fontSize: fontSize.lg,
+    fontWeight: fontWeight.bold,
+    color: colors.textPrimary,
   },
   messagesContainer: {
     flex: 1,
@@ -283,7 +316,7 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: borderRadius.sm,
   },
   aiBubbleContent: {
-    backgroundColor: colors.white,
+    backgroundColor: colors.cardBg, // Use cardBg which changes in dark mode
     borderBottomLeftRadius: borderRadius.sm,
   },
   messageText: {
@@ -321,7 +354,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: colors.white,
+    backgroundColor: colors.cardBg,
     padding: spacing.md,
     borderRadius: borderRadius.lg,
     marginBottom: spacing.sm,
@@ -338,7 +371,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-end',
     padding: spacing.md,
-    backgroundColor: colors.white,
+    backgroundColor: colors.background,
     borderTopWidth: 1,
     borderTopColor: colors.border,
     gap: spacing.sm,
@@ -346,8 +379,8 @@ const styles = StyleSheet.create({
   inputWrapper: {
     flex: 1,
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    backgroundColor: colors.gray50,
+    alignItems: 'center',
+    backgroundColor: colors.cardBg,
     borderRadius: borderRadius.xl,
     borderWidth: 1,
     borderColor: colors.border,
@@ -363,6 +396,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'transparent',
     maxHeight: 100,
+    minHeight: 40,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.sm,
     fontSize: fontSize.md,
@@ -379,6 +413,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   sendButtonInactive: {
-    backgroundColor: colors.gray200,
+    backgroundColor: colors.gray200, // Should probably be dynamic in future, but ok for now
   },
 });
