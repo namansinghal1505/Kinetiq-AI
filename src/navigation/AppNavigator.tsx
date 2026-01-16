@@ -11,7 +11,6 @@ import {
   ChatScreen,
   ProfileScreen,
   EditProfileScreen,
-  ExploreScreen,
   ExerciseSelectionScreen,
   LiveWorkoutScreen,
   SessionSummaryScreen,
@@ -56,7 +55,6 @@ export type RootStackParamList = {
 
 export type MainTabParamList = {
   Home: undefined;
-  Explore: undefined;
   Chat: undefined;
   Profile: undefined;
 };
@@ -85,15 +83,6 @@ const MainTabs = () => {
         options={{
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="home" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tab.Screen
-        name="Explore"
-        component={ExploreScreen}
-        options={{
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="search" size={size} color={color} />
           ),
         }}
       />
