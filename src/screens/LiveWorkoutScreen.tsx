@@ -16,6 +16,7 @@ import { poseDetectionService, Pose, PostureAnalysis, DetectionResponse } from '
 import { storageService } from '../services/StorageService';
 import { colors, spacing, fontSize } from '../theme';
 import { SkeletonOverlay } from '../components/SkeletonOverlay';
+import { voiceManager } from '../services/VoiceFeedbackManager';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -154,6 +155,11 @@ export const LiveWorkoutScreen: React.FC<{ navigation: any; route: any }> = ({
         setCurrentPose(pose); // Backend returns normalized (0-1) coordinates
         setPostureAnalysis(result.analysis);
 
+        // Voice Feedback
+        if (isActive) {
+          voiceManager.handleAnalysis(result.analysis);
+        }
+
         if (isActive && result.analysis.color !== 'white') {
           setScores(prev => [...prev, result.analysis.score]);
         }
@@ -211,6 +217,7 @@ export const LiveWorkoutScreen: React.FC<{ navigation: any; route: any }> = ({
   const cleanup = () => {
     stopTimer();
     stopPoseDetection();
+    voiceManager.cancel();
   };
 
   const formatTime = (seconds: number): string => {
