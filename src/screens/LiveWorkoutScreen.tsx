@@ -140,6 +140,7 @@ export const LiveWorkoutScreen: React.FC<{ navigation: any; route: any }> = ({
         base64: true,
         skipProcessing: true,
         imageType: 'jpg',
+        shutterSound: false,
       });
 
       if (!photo || !photo.base64) {

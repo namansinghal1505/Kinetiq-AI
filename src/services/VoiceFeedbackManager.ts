@@ -6,7 +6,7 @@ export type Analysis = {
   isCorrect?: boolean;
   feedback?: string[]; // suggestions
   mistakes?: string[]; // higher priority corrections
-  color?: 'green' | 'yellow' | 'red';
+  color?: 'green' | 'yellow' | 'red' | 'white';
 };
 
 type Priority = 0 | 1 | 2; // 2 = error, 1 = correction, 0 = praise
@@ -39,9 +39,9 @@ export class VoiceFeedbackManager {
 
   setEnabled(flag: boolean) {
     this.enabled = !!flag;
-    try { storageService.saveUserPreference('voiceEnabled', this.enabled); } catch {}
+    try { storageService.saveUserPreference('voiceEnabled', this.enabled); } catch { }
     if (!this.enabled) {
-      try { this.cancel(); } catch {}
+      try { this.cancel(); } catch { }
     }
   }
   isEnabled() { return this.enabled; }
@@ -66,7 +66,7 @@ export class VoiceFeedbackManager {
 
     // If higher priority, cancel ongoing speech immediately
     if (priority > this.lastPriority && this.isSpeaking) {
-      try { Speech.stop(); } catch {}
+      try { Speech.stop(); } catch { }
     }
 
     this.speakAsync(text, priority);
@@ -79,7 +79,7 @@ export class VoiceFeedbackManager {
   cancel() {
     try {
       Speech.stop();
-    } catch {}
+    } catch { }
     this.isSpeaking = false;
     // reset priority to neutral
     if (this.lastPriority > 0) this.lastPriority = 0;
@@ -130,7 +130,7 @@ export class VoiceFeedbackManager {
     this.lastSpokenAt = Date.now();
     this.lastPriority = priority;
 
-    try { Speech.stop(); } catch {}
+    try { Speech.stop(); } catch { }
 
     try {
       Speech.speak(text, {
