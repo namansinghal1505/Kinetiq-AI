@@ -672,25 +672,74 @@ def analyze_pushup(keypoints: List[Keypoint]) -> PostureAnalysis:
 
 
 def analyze_general(keypoints: List[Keypoint]) -> PostureAnalysis:
-    """General posture analysis."""
+    """General posture analysis with dynamic scoring."""
     scoring = get_scoring_coords(keypoints, visibility_threshold=0.6)
-    score = 85
-    feedback = ["Pose detected successfully"]
+    score = 100
+    feedback = []
     mistakes = []
     
     left_shoulder = get_keypoint(keypoints, 'left_shoulder')
     right_shoulder = get_keypoint(keypoints, 'right_shoulder')
+    left_hip = get_keypoint(keypoints, 'left_hip')
+    right_hip = get_keypoint(keypoints, 'right_hip')
     
+    # Check 1: Shoulder Levelness
     if scoring and 'left_shoulder' in scoring and 'right_shoulder' in scoring:
         shoulder_diff = abs(scoring['left_shoulder']['y'] - scoring['right_shoulder']['y'])
         if shoulder_diff > 0.12:
-            mistakes.append("🟡 Keep shoulders level")
-            score -= 10
+            mistakes.append("🟡 Shoulders uneven - straighten up")
+            score -= 15
+        elif shoulder_diff > 0.06:
+            mistakes.append("🟡 Slight shoulder tilt")
+            score -= 5
+    
+    # Check 2: Head Alignment (Nose relative to center of shoulders)
+    nose = get_keypoint(keypoints, 'nose')
+    if nose and left_shoulder and right_shoulder:
+        shoulder_center_x = (left_shoulder.x + right_shoulder.x) / 2
+        head_deviation = abs(nose.x - shoulder_center_x)
+        
+        # Scale deviation by shoulder width for fairness
+        shoulder_width = abs(left_shoulder.x - right_shoulder.x)
+        if shoulder_width > 0:
+            rel_deviation = head_deviation / shoulder_width
+            if rel_deviation > 0.3:
+                mistakes.append("🟡 Head tilting/leaning")
+                score -= 10
+            elif rel_deviation > 0.15:
+                # Minor deduction for slight tilt
+                score -= 3
+
+    # Check 3: Torso Alignment (Shoulders relative to hips verticality)
+    if left_shoulder and left_hip and right_shoulder and right_hip:
+        # Check if user is leaning left/right
+        shoulder_center_x = (left_shoulder.x + right_shoulder.x) / 2
+        hip_center_x = (left_hip.x + right_hip.x) / 2
+        
+        lean_diff = abs(shoulder_center_x - hip_center_x)
+        shoulder_width = abs(left_shoulder.x - right_shoulder.x)
+        
+        if shoulder_width > 0:
+            lean_ratio = lean_diff / shoulder_width
+            if lean_ratio > 0.4:
+                mistakes.append("🔴 Leaning too much sideways")
+                score -= 20
+            elif lean_ratio > 0.2:
+                mistakes.append("🟡 Stand straighter")
+                score -= 10
+
+    # Provide positive feedback if no major mistakes
+    if score >= 95:
+        feedback.append("✨ Perfect posture!")
+    elif score >= 85:
+        feedback.append("✅ Great alignment")
+    elif not mistakes:
+        feedback.append("Pose detected")
     
     color = 'green' if score >= 80 else 'yellow' if score >= 60 else 'red'
     
     return PostureAnalysis(
-        score=score,
+        score=max(0, score),
         isCorrect=score >= 80,
         feedback=feedback,
         mistakes=mistakes,
