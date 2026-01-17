@@ -16,6 +16,7 @@ import {
   SessionSummaryScreen,
   HistoryScreen,
   ChatbotCoachScreen,
+  AgentChatScreen,
   FindPhysioScreen,
   MyProgramScreen,
   PhysioDashboardScreen,
@@ -41,6 +42,7 @@ export type RootStackParamList = {
   SessionSummary: { session: any };
   History: undefined;
   ChatbotCoach: { session?: any };
+  AgentChat: undefined;
   EditProfile: undefined;
   
   // Patient Screens
@@ -160,6 +162,7 @@ export const AppNavigator: React.FC = () => {
             <Stack.Screen name="SessionSummary" component={SessionSummaryScreen} />
             <Stack.Screen name="History" component={HistoryScreen} />
             <Stack.Screen name="ChatbotCoach" component={ChatbotCoachScreen} />
+            <Stack.Screen name="AgentChat" component={AgentChatScreen} options={{ title: 'AI Assistants' }} />
             <Stack.Screen name="EditProfile" component={EditProfileScreen} />
 
             {/* Patient Screens */}

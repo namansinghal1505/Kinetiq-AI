@@ -7,6 +7,7 @@ export { LiveWorkoutScreen } from './LiveWorkoutScreen';
 export { SessionSummaryScreen } from './SessionSummaryScreen';
 export { HistoryScreen } from './HistoryScreen';
 export { ChatbotCoachScreen } from './ChatbotCoachScreen';
+export { AgentChatScreen } from './AgentChatScreen';
 export { FindPhysioScreen } from './FindPhysioScreen';
 export { MyProgramScreen } from './MyProgramScreen';
 export { PhysioDashboardScreen } from './PhysioDashboardScreen';

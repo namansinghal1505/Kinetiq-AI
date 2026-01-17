@@ -6,4 +6,5 @@ export { poseTrackerService } from './PoseTrackerService';
 export type { Pose, Keypoint, PostureAnalysis } from './PoseDetectionService';
 export type { SessionData } from './StorageService';
 export type { ChatMessage } from './OnDemandChatbotService';
+export type { AgentType } from './OnDemandAgentService';
 export type { PoseTrackerMessage, ExerciseReps, PoseTrackerConfig } from './PoseTrackerService';
